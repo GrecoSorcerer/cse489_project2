@@ -68,7 +68,6 @@ void A_output(struct msg message)
 		packet.acknum = SEQNUM;
 		
 		// package message data into packet payload
-		struct msg message;
 		strncpy(packet.payload, message.data, sizeof(message.data));
 
 		int checksum = 0;
@@ -167,7 +166,7 @@ void B_input(struct pkt packet)
 			*/
 
 			// deliver message to layer 5
-			tolayer5(B, packet.payload);
+			tolayer5(B, (char *)packet.payload);
 
 			/////////////////////
 			// send packet ACK //
