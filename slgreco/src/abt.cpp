@@ -165,7 +165,7 @@ void B_input(struct pkt packet)
 			strncpy(message.data, packet.payload, sizeof(packet.payload));
 
 			// deliver message to layer 5
-			tolayer5(B,msg);
+			tolayer5(B, message);
 
 			/////////////////////
 			// send packet ACK //
