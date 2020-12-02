@@ -40,9 +40,9 @@ int getChecksum(struct pkt packet)
 	// calculate the checksum.
 
 	// checksum seqnum
-	checksum += SEQNUM;
+	checksum += packet.seqnum;
 	// checksum acknum
-	checksum += ACKNUM;
+	checksum += packet.acknum;
 	// checksum payload
 	for (unsigned int i = 0; i < sizeof(packet.payload); i++)
 	{
@@ -127,7 +127,7 @@ void A_input(struct pkt packet)
 void A_timerinterrupt()
 {
 	// send copy of packet again
-	tolayer3(packetBuffer);
+	tolayer3(A,packetBuffer);
 
 	// restart timer
 	starttimer(A,TIMEOUT);
@@ -158,7 +158,7 @@ void B_input(struct pkt packet)
 			
 			// extract data from packet
 			struct msg message;
-			message.data = packet.payload;
+			strncpy(message.data, packet.payload, sizeof(packet.payload));
 
 			// deliver message to layer 5
 			tolayer5(B,msg);
