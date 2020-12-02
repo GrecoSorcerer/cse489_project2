@@ -157,15 +157,17 @@ void B_input(struct pkt packet)
 		// packet is not corrupt, compare seqnum to acknum
 		if (packet.seqnum == B_SEQNUM)
 		{
+			/*
 			////////////////////
 			// unload packet  //
 			
 			// extract data from packet
 			struct msg message;
 			strncpy(message.data, packet.payload, sizeof(packet.payload));
+			*/
 
 			// deliver message to layer 5
-			tolayer5(B, message);
+			tolayer5(B, packet.payload);
 
 			/////////////////////
 			// send packet ACK //
