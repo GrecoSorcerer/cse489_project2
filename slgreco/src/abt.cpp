@@ -68,8 +68,9 @@ void A_output(struct msg message)
 		packet.acknum = SEQNUM;
 		
 		// package message data into packet payload
-		packet.payload = message.data;
-		
+		struct msg message;
+		strncpy(packet.payload, message.data, sizeof(message.data));
+
 		int checksum = 0;
 		// calculate checksum
 		checksum = getChecksum(packet);
