@@ -20,7 +20,7 @@
 #define A 0
 #define B 1
 
-int WINSIZE = getwinsize();
+int WINSIZE = 50;
 float TIMEOUT = 150.00;
 
 // A Global Vars
@@ -73,6 +73,8 @@ void A_output(struct msg message)
 
     // Send to layer3, set timer if it hasnt been set
     tolayer3(A, packet);
+		// std::cout << "Sending packet with payload: " << packet.payload;
+		// std::cout << " and seqnum " << packet.seqnum << '\n';
     if(!timerUsed) {
       timerUsed = true;
       starttimer(A,TIMEOUT);
@@ -90,7 +92,16 @@ void A_output(struct msg message)
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-
+	if(packet.checksum == getChecksum(packet)) {
+		// If acknum for packet is in the window range
+		int ackNum = packet.acknum;
+		if(ackNum > ASeqnumFirst && ackNum < ASeqnumN) {
+			while(ASeqnumFirst <= ackNum) {
+				ASeqnumFirst++; // Move the window up to the new oldest unack'd packet
+			}
+			stoptimer(A);
+		}
+	}
 }
 
 /* called when A's timer goes off */
@@ -119,7 +130,26 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+	int checksum = getChecksum(packet);
+	int seqnum = packet.seqnum;
+	// std::cout << "Received packet with payload " << packet.payload;
+	// std::cout << " and seqnum " << packet.seqnum;
+	// std::cout << " and we are expecting seqnum " << BexpectedSeq << '\n';
+	// If packet isn't corrupted and is the expected sequence number..
+	if(checksum == packet.checksum && seqnum == BexpectedSeq) {
+		BexpectedSeq++; // Update B's expected sequence number for the next packet
 
+		// Send payload over to app layer
+		tolayer5(B, packet.payload);
+
+		// Create ack
+		struct pkt packetACK;
+		packetACK.acknum = BexpectedSeq;
+		packetACK.checksum = getChecksum(packetACK);
+
+		// Send ack to A
+		tolayer3(B,packetACK);
+	}
 }
 
 /* the following rouytine will be called once (only) before any other */
