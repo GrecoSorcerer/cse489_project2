@@ -20,7 +20,6 @@
 #define A 0
 #define B 1
 
-int WINSIZE = 50;
 float TIMEOUT = 150.00;
 
 // A Global Vars
@@ -64,7 +63,7 @@ msg dequeueMsg()
 void A_output(struct msg message)
 {
   // If the number of unackd packets are less than the window size
-  if(ASeqnumN - ASeqnumFirst < WINSIZE) {
+  if(ASeqnumN - ASeqnumFirst < getwinsize()) {
     // Construct packet
     struct pkt packet;
     packet.seqnum = ASeqnumN;
@@ -109,7 +108,7 @@ void A_timerinterrupt()
 {
   timerUsed =  false; // our one timer has gone off, so we can use it again
   int i = ASeqnumFirst; // point to oldest unackd packet;
-  for(i; i<ASeqnumN; i++) {
+  for(i; i<ASeqnumN-1; i++) {
     pkt toSend = packetBuffer[i]; // grab packet
     tolayer3(A, toSend);
     if(!timerUsed) {
