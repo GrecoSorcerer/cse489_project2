@@ -1,6 +1,6 @@
 #include "../include/simulator.h"
+#include <iostream>
 #include <cstring>
-#include <cstdio>
 #include <vector>
 
 /* ******************************************************************
@@ -25,21 +25,20 @@ struct pktData {
   pkt packet;
 
   int timeSent;
-  int deltaTime;
 
   bool wasSent;
   bool wasAckd;
 };
 
-float TIMEOUT = 30;
-int ASeqnumFirst = 0;           // SeqNum of first frame in window. Same as send_base
-int ASeqnumN = 0;               // SeqNum of Nth frame in window. Same as nextseqnum
-bool timerInUse = false;        // Ensures we only use one timer at a time
-std::vector<pktData> packets;   // To store all frames of data. This acts as our sender view
+float TIMEOUT = 50;
+int ASeqnumFirst = 0;            // SeqNum of first frame in window. Same as send_base
+int ASeqnumN = 0;                // SeqNum of Nth frame in window. Same as nextseqnum
+std::vector<pktData> packets;    // To store all frames of data. This acts as our sender view
+int it = -1;                     // Ensures physical timer is only called once in A_output
 
-int BRcvBase = 0;               // Expected SeqNum of first frame in receiver window. Same as rcv_base
+int BRcvBase = 0;                // Expected SeqNum of first frame in receiver window. Same as rcv_base
 int BRcvN = 0;
-std::vector<pkt> recvBuffer;    // Buffer of received packets. Will help deliver consecutively numbered packets
+std::vector<pktData> recvBuffer; // Buffer of received packets. Will help deliver consecutively numbered packets
 
 // HELPER FUNCTIONS
 int getChecksum(struct pkt packet)
@@ -74,12 +73,9 @@ void A_output(struct msg message)
   if(ASeqnumN - ASeqnumFirst < getwinsize()) {
     pktDat.wasSent = true; // Flag as sent (don't need to set for other case since its initialized to false by default)
     tolayer3(A, pktDat.packet); // Send to layer3, set timer if it hasnt been set
-    if(!timerInUse) {
-      timerInUse = true;
-      starttimer(A, TIMEOUT);
-    }
+    if(++it < 1) starttimer(A, TIMEOUT); // Start first physical timer. This is only called once.
   }
-  packets.push_back(pktDat); // Add packet to our collection
+  packets.push_back(pktDat); // Add packet to our sender view
   ASeqnumN++; // Increase upper limit of window regardless, since we know packets buffered or not will get sent regardless
 }
 
@@ -87,25 +83,39 @@ void A_output(struct msg message)
 void A_input(struct pkt packet)
 {
   if(getChecksum(packet) == packet.checksum) {
-    // if(packet.seqnum - ASeqnumFirst < getwinsize()) {
-    //   packets[packet.seqnum].wasAckd = true; // Mark as recv'd
-      if(packet.seqnum == ASeqnumFirst) {
-        // If packets seqnum is equal to the base, move up the base to the unackd packet with the smallest seq number
-        // while(!packets[ASeqnumFirst].wasAckd)
-        ASeqnumFirst++;
-        stoptimer(A);
+    packets[packet.seqnum].wasAckd = true; // Mark as recv'd
+    if(packet.seqnum == ASeqnumFirst) {
+      // If packets seqnum is equal to the base, move up the base to the unackd packet with the smallest seq number
+      while(!packets[ASeqnumFirst].wasAckd) ASeqnumFirst++;
+      stoptimer(A);
+      // Check window for untransmitted packets and retransmit them
+      for(int i=ASeqnumFirst; i<ASeqnumN; i++) {
+        if(!packets[i].wasSent) {
+          packets[i].wasSent = true;
+          packets[i].timeSent = get_sim_time();
+          tolayer3(A, packets[i].packet);
+        }
       }
-    // }
+    }
+    // Retransmit any packets that might be expired
+    if(ASeqnumFirst < ASeqnumN) {
+      for(int i=ASeqnumFirst; i<ASeqnumN; i++) {
+        int deltaTime = get_sim_time() - packets[i].timeSent;
+        if(deltaTime >= TIMEOUT && !packets[i].wasAckd) {
+          packets[i].timeSent = get_sim_time();
+          tolayer3(A, packets[i].packet);
+        }
+      }
+    }
   }
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
-  tolayer3(A, packets[ASeqnumFirst].packet);       // First, resend the base packet since the timer is tied in to the base
-  packets[ASeqnumFirst].timeSent = get_sim_time(); // Update starttime for packet
+  packets[ASeqnumFirst].timeSent = get_sim_time(); // First, update starttime for packet
+  tolayer3(A, packets[ASeqnumFirst].packet);       // Resend the base packet since the timer is tied in to the base
   starttimer(A, TIMEOUT);                          // Restart timer
-  // TODO: Account for retransmitting multiple packets
 }
 
 /* the following routine will be called once (only) before any other */
@@ -119,21 +129,33 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+  BRcvN =  BRcvBase + getwinsize(); // Update BRcvN
   char msg[20];
   strncpy(msg, packet.payload, 20);
   if(getChecksum(packet) == packet.checksum) {
     // Handle two cases, where seqNum is in [BRcvBase, BRcvBase+N-1], or in [BRcvBase-N, BRcvBase-1]
-    if(BRcvN - BRcvBase < getwinsize()) {
-      pkt ack = makePkt(msg, -1, packet.seqnum); // Create ACK
-      recvBuffer[packet.seqnum] = ack;           // Buffer ACK
-      tolayer3(B, ack);                          // Send ACK
-      // Send packet to upper layer if the seqnum is rcv_base
-      if(BRcvN == packet.seqnum) {
-        tolayer5(B, packet.payload);
-        BRcvN++;
-        BRcvBase++;
-        // As well as any other packets in [rcv_base, rcv_base+N-1]
+    if(packet.seqnum <= BRcvN+1 && packet.seqnum >= BRcvBase) {
+      // If packet has not been previously received, it is buffered
+      if(recvBuffer[packet.seqnum].packet.seqnum == -1) {
+        pkt ack = makePkt(msg, packet.seqnum, packet.seqnum); // Create ACK
+        recvBuffer[packet.seqnum].packet = ack;               // Buffer ACK
+        tolayer3(B, ack);                                     // Send ACK
       }
+      // Send packet to upper layer if the seqnum is rcv_base
+      if(BRcvBase == packet.seqnum) {
+        tolayer5(B, packet.payload);
+        recvBuffer[packet.seqnum].wasSent = true; // Flag as being sent (to upper layer)
+        // Send any consecutive packets in [rcv_base, rcv_base+N-1]
+        for(int i=BRcvBase; i<BRcvN+1; i++) {
+          if(!recvBuffer[i+1].wasSent && recvBuffer[i+1].packet.acknum != -1) {
+            tolayer5(B, recvBuffer[i+1].packet.payload);
+            BRcvBase++;
+          } else break;
+        }
+        BRcvBase++; // Increment once here to account for the initial packet whose ack is the base
+      }
+    } else if(packet.seqnum <= BRcvBase-1 && packet.seqnum >= BRcvBase - getwinsize()) {
+      tolayer3(B, makePkt(msg, packet.seqnum, packet.seqnum));
     }
   }
 }
@@ -142,11 +164,9 @@ void B_input(struct pkt packet)
 /* entity B routines are called. You can use it to do any initialization */
 void B_init()
 {
+  char tmp[1] = "";
   // Fill recv buffer with empty packets
   for(int i=0; i<1000; i++) {
-    pkt pack;
-    pack.seqnum = -1;
-    pack.acknum = -1;
-    recvBuffer.push_back(pack);
+    recvBuffer.push_back(makePktData(tmp, -1, -1));
   }
 }
