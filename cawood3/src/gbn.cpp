@@ -20,7 +20,9 @@
 #define A 0
 #define B 1
 
-float TIMEOUT = 150.00;
+float TIMEOUT = 150;
+
+int cnt = 0;
 
 // A Global Vars
 int base = 0;
@@ -129,6 +131,8 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+	// if(cnt++ > 20) return;
+	// if(cnt++ > 100) return; 
 	int checksum = getChecksum(packet);
 	int seqnum = packet.seqnum;
 	// std::cout << "Received packet with payload " << packet.payload;
