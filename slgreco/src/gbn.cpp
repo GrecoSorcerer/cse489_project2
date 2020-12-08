@@ -20,13 +20,15 @@
 **********************************************************************/
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
-#define TIMEOUT 70f
 #define A		0
 #define B		1
 #define PKTMAX  1000
 #define ACK     -1
 
-int base, nextseqnum, windowsize;
+int base;
+int nextseqnum;
+int windowsize;
+float TIMEOUT =  70;
 
 std::list<msg> messageBuffer; // To store buffering messages
 std::vector<pkt> packetBuffer;  // To store N frames
@@ -58,9 +60,9 @@ pkt makePacket(int seqnum, int acknum, struct msg message)
 	struct pkt packet;
 
 	// set seqnum
-	packet.seqnum = SEQNUM;
+	packet.seqnum = seqnum;
 	// set acknum
-	packet.acknum = SEQNUM;
+	packet.acknum = acknum;
 
 	// package message data into packet payload
 	strncpy(packet.payload, message.data, sizeof(message.data));
@@ -80,8 +82,9 @@ int getAckNum(struct pkt packet)
 {
 	if (packet.acknum == ACK)
 	{
-		return
+		return packet.seqnum;
 	}
+	return -1;
 }
 
 void enqueueMsg(struct msg message)
@@ -98,10 +101,10 @@ msg dequeueMsg()
 	return message;
 }
 
-void refuse_message(struct msg message)
+void refuse_data(struct msg message)
 {
 	// place the refused message into the message buffer until it can be dealt with
-	messageBuffer.enqueueMsg(message);
+	enqueueMsg(message);
 }
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
@@ -114,14 +117,11 @@ void A_output(struct msg message)
 		// make the packet, fill it with data
 		packet = makePacket(nextseqnum, 0, message);
 
-		// calculate and assign checksum
-		packet.checksum = getChecksum(packet);
-
 		// place the packet into the packet buffer
 		packetBuffer[nextseqnum] = packet;
 
 		// send the packet
-		tolayer3(A, packetBuffer(packet));
+		tolayer3(A, packet);
 
 		// only start the timer at the top of the stack
 		if (base == nextseqnum)
@@ -141,14 +141,14 @@ void A_output(struct msg message)
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-	if (packet.checksum == )
+	if (packet.checksum == getChecksum(packet))
 	{
 
 		base = packet.acknum + 1;
 
 		if (base == nextseqnum)
 		{
-			stoptimer(A)
+			stoptimer(A);
 		}
 		else
 		{
@@ -168,9 +168,9 @@ void A_timerinterrupt()
 	starttimer(A, TIMEOUT);
 
 	// resend the window
-	for (int i = base, base < nextseqnum - 1; i++)
+	for (int i = base; base < nextseqnum - 1; i++)
 	{
-		tolayer3(packetBuffer[i]);
+		tolayer3(A, packetBuffer[i]);
 	}
 }
 
@@ -194,15 +194,14 @@ void B_input(struct pkt packet)
 {
 	if (packet.checksum == getChecksum(packet) && packet.seqnum == expectedseqnum)
 	{
-		// extract the message from the packet
-		struct msg message;
-		strncpy(message.data, packet.payload, sizeof(packet.payload));
-
-		tolayer5(B, message);
-
+		// extract the message from the packet and send to next layer
+		tolayer5(B, (char *)packet.payload);
+		
 		struct pkt packet;
 
-		packet = makePacket(expectedseqnum, ACK, NULL);
+		packet.seqnum = expectedseqnum;
+
+		packet.acknum = ACK;
 
 		packet.checksum = getChecksum(packet);
 
@@ -224,7 +223,8 @@ void B_init()
 {
 	expectedseqnum = 0;
 	struct pkt packet;
-	packet = makePacket(0, ACK, NULL);
+	packet.seqnum = expectedseqnum;
+	packet.acknum = ACK;
 	packet.checksum = getChecksum(packet);
 	ACKPKT = packet;
 }
