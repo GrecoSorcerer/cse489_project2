@@ -144,7 +144,7 @@ void A_input(struct pkt packet)
 	if (packet.checksum == getChecksum(packet))
 	{
 
-		base = packet.acknum + 1;
+		base = packet.seqnum + 1;
 
 		if (base == nextseqnum)
 		{
