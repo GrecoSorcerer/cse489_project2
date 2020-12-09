@@ -28,7 +28,10 @@
 int base;
 int nextseqnum;
 int windowsize;
-float TIMEOUT =  70;
+float TIMEOUT =  100;
+
+int expectedseqnum;
+struct pkt ACKPKT;
 
 std::list<msg> messageBuffer; // To store buffering messages
 std::vector<pkt> packetBuffer;  // To store N frames
@@ -66,7 +69,6 @@ pkt makePacket(int seqnum, int acknum, struct msg message)
 
 	// package message data into packet payload
 	strncpy(packet.payload, message.data, sizeof(message.data));
-
 	int checksum = 0;
 	// calculate checksum
 	checksum = getChecksum(packet);
@@ -105,13 +107,15 @@ void refuse_data(struct msg message)
 {
 	// place the refused message into the message buffer until it can be dealt with
 	enqueueMsg(message);
+	
+	printf("\nRefused!!");
+	printf((char *)message.data);
 }
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
 {
 	if (nextseqnum < base + windowsize)
 	{
-
 		struct pkt packet;
 
 		// make the packet, fill it with data
@@ -122,6 +126,8 @@ void A_output(struct msg message)
 
 		// send the packet
 		tolayer3(A, packet);
+		printf("\n> Sending packet to layer 3 from A: ");
+		printf((char *)packet.payload);
 
 		// only start the timer at the top of the stack
 		if (base == nextseqnum)
@@ -143,8 +149,10 @@ void A_input(struct pkt packet)
 {
 	if (packet.checksum == getChecksum(packet))
 	{
-
-		base = packet.acknum + 1;
+		base = packet.seqnum + 1;
+		printf("\nbase: %i",base);
+		printf("\nnext: %i",nextseqnum);
+		
 
 		if (base == nextseqnum)
 		{
@@ -152,6 +160,7 @@ void A_input(struct pkt packet)
 		}
 		else
 		{
+			stoptimer(A);
 			starttimer(A, TIMEOUT);
 		}
 	}
@@ -159,19 +168,33 @@ void A_input(struct pkt packet)
 	{
 		// The packet was corrupt
 	}
+
+	if (!(messageBuffer.empty()))
+	{
+		struct pkt packet = makePacket(nextseqnum, 0, dequeueMsg());
+
+		packetBuffer[nextseqnum] = packet;
+			
+		nextseqnum++;
+	}
+	
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
-	// restart the timer
-	starttimer(A, TIMEOUT);
 
+	// restart the timer
+	printf("\n");
+	printf("\nseqnum%i",nextseqnum);
 	// resend the window
+	
+	starttimer(A, TIMEOUT);
 	for (int i = base; base < nextseqnum - 1; i++)
 	{
 		tolayer3(A, packetBuffer[i]);
 	}
+	
 }
 
 /* the following routine will be called once (only) before any other */
@@ -181,13 +204,10 @@ void A_init()
 	base = 0;
 	nextseqnum = 0;
 	windowsize = getwinsize();
-	packetBuffer.resize(windowsize);
+	packetBuffer.resize(101);
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
-
-int expectedseqnum;
-struct pkt ACKPKT;
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
@@ -196,24 +216,21 @@ void B_input(struct pkt packet)
 	{
 		// extract the message from the packet and send to next layer
 		tolayer5(B, (char *)packet.payload);
-		
-		struct pkt packet;
 
-		packet.seqnum = expectedseqnum;
-
-		packet.acknum = ACK;
-
-		packet.checksum = getChecksum(packet);
-
-		ACKPKT = packet;
-
+		printf("\n>To layer 5 from B: ");
+		printf((char *)packet.payload);
+		struct msg message;
+		ACKPKT = makePacket(expectedseqnum, ACK, message);
 		tolayer3(B, packet);
+		
+		printf("\n<To layer 3 from B: NEW ACKPKT %i",expectedseqnum);
 
 		expectedseqnum++;
 	}
 	else
 	{
 		tolayer3(B, ACKPKT);
+		printf("\n<To layer 3 from B: LAST ACKPKT");
 	}
 }
 
@@ -222,9 +239,8 @@ void B_input(struct pkt packet)
 void B_init()
 {
 	expectedseqnum = 0;
-	struct pkt packet;
-	packet.seqnum = expectedseqnum;
-	packet.acknum = ACK;
-	packet.checksum = getChecksum(packet);
+	struct msg message;
+	struct pkt packet = makePacket(expectedseqnum, ACK, message);
 	ACKPKT = packet;
+
 }
