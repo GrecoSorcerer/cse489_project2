@@ -207,11 +207,11 @@ void B_input(struct pkt packet)
 
 		ackpacket.acknum = ACK;
 
-		packet.checksum = getChecksum(ackpacket);
+		ackpacket.checksum = getChecksum(ackpacket);
 
-		ACKPKT = packet;
+		ACKPKT = ackpacket;
 
-		tolayer3(B, packet);
+		tolayer3(B, ackpacket);
 
 		expectedseqnum++;
 	}
