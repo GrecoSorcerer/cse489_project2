@@ -33,7 +33,13 @@ float TIMEOUT =  100;
 int expectedseqnum;
 struct pkt ACKPKT;
 
-std::list<msg> messageBuffer; // To store buffering messages
+int expectedseqnum;
+struct pkt ACKPKT;
+
+std::list<msg> message
+int expectedseqnum;
+struct pkt ACKPKT;
+Buffer; // To store buffering messages
 std::vector<pkt> packetBuffer;  // To store N frames
 
 
@@ -149,10 +155,15 @@ void A_input(struct pkt packet)
 {
 	if (packet.checksum == getChecksum(packet))
 	{
+<<<<<<< HEAD
 		base = packet.seqnum + 1;
 		printf("\nbase: %i",base);
 		printf("\nnext: %i",nextseqnum);
 		
+=======
+
+		base = packet.seqnum + 1;
+>>>>>>> 79810f4a193f6cc910f8c6bd363e427247d8b1e5
 
 		if (base == nextseqnum)
 		{
@@ -204,11 +215,19 @@ void A_init()
 	base = 0;
 	nextseqnum = 0;
 	windowsize = getwinsize();
+<<<<<<< HEAD
 	packetBuffer.resize(101);
+=======
+	packetBuffer.resize(PKTMAX);
+>>>>>>> 79810f4a193f6cc910f8c6bd363e427247d8b1e5
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 79810f4a193f6cc910f8c6bd363e427247d8b1e5
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
@@ -216,6 +235,7 @@ void B_input(struct pkt packet)
 	{
 		// extract the message from the packet and send to next layer
 		tolayer5(B, (char *)packet.payload);
+<<<<<<< HEAD
 
 		printf("\n>To layer 5 from B: ");
 		printf((char *)packet.payload);
@@ -224,6 +244,20 @@ void B_input(struct pkt packet)
 		tolayer3(B, packet);
 		
 		printf("\n<To layer 3 from B: NEW ACKPKT %i",expectedseqnum);
+=======
+		
+		struct pkt ackpacket;
+
+		ackpacket.seqnum = expectedseqnum;
+
+		ackpacket.acknum = ACK;
+
+		ackpacket.checksum = getChecksum(ackpacket);
+
+		ACKPKT = ackpacket;
+
+		tolayer3(B, ackpacket);
+>>>>>>> 79810f4a193f6cc910f8c6bd363e427247d8b1e5
 
 		expectedseqnum++;
 	}
