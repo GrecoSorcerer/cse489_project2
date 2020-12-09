@@ -30,7 +30,13 @@ int nextseqnum;
 int windowsize;
 float TIMEOUT =  70;
 
-std::list<msg> messageBuffer; // To store buffering messages
+int expectedseqnum;
+struct pkt ACKPKT;
+
+std::list<msg> message
+int expectedseqnum;
+struct pkt ACKPKT;
+Buffer; // To store buffering messages
 std::vector<pkt> packetBuffer;  // To store N frames
 
 
@@ -181,13 +187,11 @@ void A_init()
 	base = 0;
 	nextseqnum = 0;
 	windowsize = getwinsize();
-	packetBuffer.resize(windowsize);
+	packetBuffer.resize(PKTMAX);
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 
-int expectedseqnum;
-struct pkt ACKPKT;
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
