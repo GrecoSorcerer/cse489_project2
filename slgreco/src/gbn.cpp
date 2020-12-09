@@ -201,13 +201,13 @@ void B_input(struct pkt packet)
 		// extract the message from the packet and send to next layer
 		tolayer5(B, (char *)packet.payload);
 		
-		struct pkt packet;
+		struct pkt ackpacket;
 
-		packet.seqnum = expectedseqnum;
+		ackpacket.seqnum = expectedseqnum;
 
-		packet.acknum = ACK;
+		ackpacket.acknum = ACK;
 
-		packet.checksum = getChecksum(packet);
+		packet.checksum = getChecksum(ackpacket);
 
 		ACKPKT = packet;
 
