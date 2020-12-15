@@ -1,4 +1,7 @@
 #include "../include/simulator.h"
+#include <iostream>
+#include <cstring>
+#include <vector>
 
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
@@ -14,49 +17,113 @@
 **********************************************************************/
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
-int A = 0;
-int B = 1;
-int winsize = getwinsize();
+#define A 0
+#define B 1
+
+float TIMEOUT = 150;
+
+int cnt = 0;
 
 // A Global Vars
-int base;
-int ASeqnum;
-int numUnackd;
+int base = 0;
+int ASeqnumFirst = 0; // SeqNum of first frame in window
+int ASeqnumN = 0;     // SeqNum of Nth frame in window
+
+std::vector<msg> messageBuffer; // To store buffering messages
+std::vector<pkt> packetBuffer;  // To store N frames
+
+bool timerUsed = false; // To ensure that we only set up one timer for GBN
 
 // B Global Vars
-int BAcknum;
-int BexpectedSeq;
+int BexpectedSeq = 0;
 
+// HELPER FUNCTIONS
+int getChecksum(struct pkt packet)
+{
+	int checksum = packet.seqnum + packet.acknum;
+	for (int i=0; i<20; i++) {
+		checksum += packet.payload[i];
+	}
+	return checksum;
+}
+
+void enqueueMsg(struct msg message)
+{
+	messageBuffer.push_back(message);
+}
+
+msg dequeueMsg()
+{
+	struct msg message;
+	message = messageBuffer.front();
+	messageBuffer.erase(messageBuffer.begin()); // Erase first element
+
+	return message;
+}
 
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
 {
-  if(numUnackd < winsize) {
-    // Create packet, update vars
+  // If the number of unackd packets are less than the window size
+  if(ASeqnumN - ASeqnumFirst < getwinsize()) {
+    // Construct packet
+    struct pkt packet;
+    packet.seqnum = ASeqnumN;
+    strncpy(packet.payload, message.data, sizeof(message.data));
+    packet.checksum = getChecksum(packet);
+
+    // Send to layer3, set timer if it hasnt been set
+    tolayer3(A, packet);
+		// std::cout << "Sending packet with payload: " << packet.payload;
+		// std::cout << " and seqnum " << packet.seqnum << '\n';
+    if(!timerUsed) {
+      timerUsed = true;
+      starttimer(A,TIMEOUT);
+    }
+
+    // Update seqnum of nth frame, and add the packet to the buffer
+    ASeqnumN++;
+    packetBuffer.push_back(packet);
   } else {
-    tolayer5(A, message.data);
+    // Buffer message if WINSIZE is full
+    enqueueMsg(message);
   }
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-
+	if(packet.checksum == getChecksum(packet)) {
+		// If acknum for packet is in the window range
+		int ackNum = packet.acknum;
+		if(ackNum > ASeqnumFirst && ackNum < ASeqnumN) {
+			while(ASeqnumFirst <= ackNum) {
+				ASeqnumFirst++; // Move the window up to the new oldest unack'd packet
+			}
+			stoptimer(A);
+		}
+	}
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
-
+  timerUsed =  false; // our one timer has gone off, so we can use it again
+  int i = ASeqnumFirst; // point to oldest unackd packet;
+  for(i; i<ASeqnumN-1; i++) {
+    pkt toSend = packetBuffer[i]; // grab packet
+    tolayer3(A, toSend);
+    if(!timerUsed) {
+      starttimer(A, TIMEOUT);
+      timerUsed = true;
+    }
+  }
 }
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
 void A_init()
 {
-  base = 0;
-  ASeqnum = 0;
-  numUnackd = 0;
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
@@ -64,13 +131,32 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+	// if(cnt++ > 20) return;
+	// if(cnt++ > 100) return; 
+	int checksum = getChecksum(packet);
+	int seqnum = packet.seqnum;
+	// std::cout << "Received packet with payload " << packet.payload;
+	// std::cout << " and seqnum " << packet.seqnum;
+	// std::cout << " and we are expecting seqnum " << BexpectedSeq << '\n';
+	// If packet isn't corrupted and is the expected sequence number..
+	if(checksum == packet.checksum && seqnum == BexpectedSeq) {
+		BexpectedSeq++; // Update B's expected sequence number for the next packet
 
+		// Send payload over to app layer
+		tolayer5(B, packet.payload);
+
+		// Create ack
+		struct pkt packetACK;
+		packetACK.acknum = BexpectedSeq;
+		packetACK.checksum = getChecksum(packetACK);
+
+		// Send ack to A
+		tolayer3(B,packetACK);
+	}
 }
 
 /* the following rouytine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
 void B_init()
 {
-  BAcknum = 0;
-  BexpectedSeq = 0;
 }
